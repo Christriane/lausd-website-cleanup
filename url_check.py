@@ -60,7 +60,6 @@ def parse_csv_file(file_name):
 # pass html content into
 def get_url_html(file_name, broken_links_url, linked_from_url):
     # Variables declarations
-    url_results = []
     url_status = []
     url_message = []
     url_response_code = []
@@ -164,7 +163,7 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
                         url_metadata['page_moved'] += 1
                         url_metadata['redirect'] +=1
                         url_message.append('LinkedFromURL might be a redirect landing page.')
-                if('-id' in sys.argv[1] and url_status[-1] is 'yes'):
+                if('-id' in sys.argv and url_status[-1] is 'yes'):
                     print('Checking DomainID')
                 if (url_status[-1] is 'yes'):
                     url_message.append('LinkedFromURL successfully processed')
