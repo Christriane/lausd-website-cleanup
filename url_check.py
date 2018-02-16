@@ -79,6 +79,7 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
         'redirect': 0,
         'response_code_changes': 0,
         'pdf_links': 0,
+        'powerpoint_links': 0,
         'unknown_errors': 0
     }
     false_negatives = [
@@ -106,13 +107,31 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
             url_response_code.append('n/a')
             url_metadata['empty_links'] +=1
             url_message.append('BrokenLinks/LinkedFromURL is empty')
+        # Mark as PDF and move on to next link
+        # TODO time permitting add pdf scraper logic
+        elif '.pdf' in linked_url:
+            print('LinkedFromURL is a PDF, skipping for now')
+            url_status.append('No')
+            url_response_code.append('n/a')
+            url_metadata['pdf_links'] +=1
+            url_metadata['links_processed'] +=1
+            url_message.append('LinkedFromURL is a pdf, inspect manually')
+        # Mark as PowerPoint and move on to next link
+        # TODO time permitting add .pptx scraper logic
+        elif '.pptx' in linked_url:
+            print('LinkedFromURL is a PowerPoint, skipping for now')
+            url_status.append('No')
+            url_response_code.append('n/a')
+            url_metadata['powerpoint_links'] +=1
+            url_metadata['links_processed'] +=1
+            url_message.append('LinkedFromURL is a PowerPoint, inspect manually')
         # else attempt to issue get request
         else:
             try:
                 # issue get request with a timeout of 5 seconds
                 # if success call check_url_html and append result to
                 # if fails hopefully exception catches it
-                response = requests.get(linked_url, headers=headers, timeout=5)
+                response = requests.get(linked_url, headers=headers, timeout=10)
                 # add response.status_code to url_response_code list
                 url_response_code.append(response.status_code)
                 # call check_url_html with arguments:
@@ -163,7 +182,7 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
             # update url_status
             # add error message
             except requests.exceptions.ConnectionError:
-                print("BrokenLinks:", url_status[-1],'Connection error. Check LinkedFromURL on web browser. LinkedFromURL:',linked_url)
+                print("Found:", url_status[-1],'Connection error. Check LinkedFromURL on web browser. LinkedFromURL:',linked_url)
                 url_status.append('No')
                 url_response_code.append('n/a')
                 url_metadata['connection_errors'] +=1
@@ -173,7 +192,7 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
             # update url_status
             # add error message
             except requests.exceptions.InvalidSchema:
-                print("BrokenLinks:", url_status[-1],'Invalid schema error. Check LinkedFromURL protocol/format. LinkedFromURL:',linked_url)
+                print("Found:", url_status[-1],'Invalid schema error. Check LinkedFromURL protocol/format. LinkedFromURL:',linked_url)
                 url_status.append('No')
                 url_response_code.append('n/a')
                 url_metadata['invalid_schema_errors'] +=1
@@ -183,7 +202,7 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
             # update url_status
             # add error message
             except requests.exceptions.MissingSchema:
-                print("BrokenLinks:", url_status[-1],'Missing schema error. Check LinkedFromURL format, might be empty. LinkedFromURL:',linked_url)
+                print("Found:", url_status[-1],'Missing schema error. Check LinkedFromURL format, might be empty. LinkedFromURL:',linked_url)
                 url_status.append('No')
                 url_response_code.append('n/a')
                 url_metadata['missing_schema_errors'] +=1
@@ -193,7 +212,7 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
             # update url_status
             # add error message
             except requests.exceptions.RequestException:
-                print("BrokenLinks:", url_status[-1],'Read Timeout error. The connection timed out after waiting 10 seconds LinkedFromURL:',linked_url)
+                print("Found:", url_status[-1],'Read Timeout error. The connection timed out after waiting 10 seconds LinkedFromURL:',linked_url)
                 url_status.append('No')
                 url_response_code.append('n/a')
                 url_metadata['time_out_errors'] +=1
@@ -204,7 +223,7 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
             # update url_status
             # add error message
             except Exception as e:
-                print("BrokenLinks:", url_status[-1],'Caught unknown error.', e, 'LinkedFromURL:',linked_url)
+                print("Found:", url_status[-1],'Caught unknown error.', e, 'LinkedFromURL:',linked_url)
                 url_status.append('No')
                 url_response_code.append('n/a')
                 url_metadata['unknown_errors'] +=1
@@ -249,14 +268,12 @@ def check_url_html(url_contents):
     #check if broken_link contains & symbol. if yes replace with html friendly amp; and recheck
     elif('&' in url_contents[1].lower()):
         if(url_contents[1].replace('&', '&amp;').lower() in url_contents[0].lower()):
-            return 'yes'
+            return ('yes')
     #check if multiple level relative path  exists in linked_from_url html, if yes build relative path and compare
     elif('../' in url_contents[0].lower() or '..\\' in url_contents[0].lower()):
-        print('SECOND CHECK')
         return fix_relative_different_path_urls(url_contents[0], url_contents[1], url_contents[2])
     #check if same level relative path exists in linked_from_url html, if yes build relative path and compare
     elif('/' not in BeautifulSoup(url_contents[0], 'html.parser').findAll('a')):
-        print('THIRD CHECK')
         return fix_relative_same_path_urls(url_contents[0], url_contents[1], url_contents[2])
     return 'no'
 
@@ -343,6 +360,8 @@ def display_results(url_status, url_metadata, total_time_elapsed, url_response_c
     print('\tPercent of ACTUAL 404 Links:', '{:.2%}'.format(url_response_code.count(404)/len(url_status)))
     print('\tPercent of CHANGED 404 Links:', '{:.2%}'.format(url_response_code.count('c404')/len(url_status)))
     print('\tPercent of Links NOT found (errors/empty):', '{:.2%}'.format(url_response_code.count('n/a')/len(url_status)))
+    print('LinkedFromURLs are .pptx', url_metadata['powerpoint_links'])
+    print('LinkedFromURLs are .pdf', url_metadata['pdf_links'])
     print('Connection errors processed:', url_metadata['connection_errors'])
     print('Read timeout errors processed:', url_metadata['time_out_errors'])
     print('Invalid schema errors processed:', url_metadata['invalid_schema_errors'])
@@ -352,6 +371,7 @@ def display_results(url_status, url_metadata, total_time_elapsed, url_response_c
     print('Page Inactive Links processed:', url_metadata['inactive'])
     print('Page Unavailable Links processed:', url_metadata['unavailable'])
     print('Page Moved Links processed:', url_metadata['page_moved'])
+    print('Page Redirect Landing Links processed:', url_metadata['redirect'])
     print('\tTotal Number of Inactive/Unavailable Links processed:', url_metadata['response_code_changes'])
     print('\tPercent Link response codes changed:', '{:.2%}'.format(url_metadata['response_code_changes']/len(url_status)))
     print('========================================================')
