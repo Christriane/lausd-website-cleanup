@@ -80,13 +80,15 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
         'response_code_changes': 0,
         'pdf_links': 0,
         'powerpoint_links': 0,
+        'docx_links': 0,
         'unknown_errors': 0
     }
     false_negatives = [
         'Sorry, the page is inactive or protected.',
         'This page is currently unavailable.',
         'This page has moved.',
-        'This presentation contains content that your browser may not be able to show properly.']
+        'This presentation contains content that your browser may not be able to show properly.'
+    ]
 
     # set a user_agent to include for get request
     headers = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.90 Safari/537.36'}
@@ -125,6 +127,13 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
             url_metadata['powerpoint_links'] +=1
             url_metadata['links_processed'] +=1
             url_message.append('LinkedFromURL is a PowerPoint, inspect manually')
+        elif '.docx' in linked_url:
+            print('LinkedFromURL is a Word Document, skipping for now')
+            url_status.append('No')
+            url_response_code.append('n/a')
+            url_metadata['docx_links'] +=1
+            url_metadata['links_processed'] +=1
+            url_message.append('LinkedFromURL is a Word Document, inspect manually')
         # else attempt to issue get request
         else:
             try:
@@ -163,10 +172,12 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
                         url_metadata['page_moved'] += 1
                         url_metadata['redirect'] +=1
                         url_message.append('LinkedFromURL might be a redirect landing page.')
-                if('-id' in sys.argv and url_status[-1] is 'yes'):
+                    else:
+                        url_message.append('LinkedFromURL successfully processed but Broken Link not found')
+                elif('-id' in sys.argv and url_status[-1] is 'yes'):
                     print('Checking DomainID')
-                if (url_status[-1] is 'yes'):
-                    url_message.append('LinkedFromURL successfully processed')
+                elif(url_status[-1] is 'yes'):
+                    url_message.append('LinkedFromURL successfully processed and Broken Link found')
 
                 print('Found:', url_status[-1], 'Status code:',url_response_code[-1], 'BrokenLinks:', broken_url, 'LinkedFromURL:', response.url)
                 # increment url_metadata['links_processed']
