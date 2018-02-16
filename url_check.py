@@ -2,6 +2,7 @@
 # csv used to read/write csv files
 # requests issues get request to return html contents
 # time used to get time of get request
+# PyPDF2 used to parse pdf links
 # beautiful soup makes html contents human friendly readable, for testing
 import csv
 import requests
@@ -163,12 +164,9 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
                         url_metadata['page_moved'] += 1
                         url_metadata['redirect'] +=1
                         url_message.append('LinkedFromURL might be a redirect landing page.')
-                elif (url_status[-1] is 'yes'):
-                    if('DomainID = ' in response.text):
-                        print('DomainID was found')
-                    else:
-                        print('DomainID')
-                else:
+                if('-id' in sys.argv[1] and url_status[-1] is 'yes'):
+                    print('Checking DomainID')
+                if (url_status[-1] is 'yes'):
                     url_message.append('LinkedFromURL successfully processed')
 
                 print('Found:', url_status[-1], 'Status code:',url_response_code[-1], 'BrokenLinks:', broken_url, 'LinkedFromURL:', response.url)
@@ -316,7 +314,8 @@ def fix_relative_different_path_urls(url_html, broken_url, linked_url):
 
     if(broken_url.lower() in absolute_urls):
         return 'yes'
-    return 'no'
+    else:
+        return 'no'
 
 # check the linked from html for multiple level relative path
 # get list of all links that have multiple level relative paths and build its absolute url
@@ -342,6 +341,7 @@ def fix_relative_same_path_urls(url_html, broken_url, linked_url):
 
     if broken_url.lower() in absolute_urls:
         return 'yes'
+
     return 'no'
 
 # print to screen a sample report
@@ -359,7 +359,7 @@ def display_results(url_status, url_metadata, total_time_elapsed, url_response_c
     print('\tPercent of Links found:', '{:.2%}'.format(url_status.count('yes')/len(url_status)))
     print('\tPercent of ACTUAL 404 Links:', '{:.2%}'.format(url_response_code.count(404)/len(url_status)))
     print('\tPercent of CHANGED 404 Links:', '{:.2%}'.format(url_response_code.count('c404')/len(url_status)))
-    print('\tPercent of Links NOT found (errors/empty):', '{:.2%}'.format(url_response_code.count('n/a')/len(url_status)))
+    print('\tPercent of Links NOT found (errors/empty/pdf/pptx):', '{:.2%}'.format(url_response_code.count('n/a')/len(url_status)))
     print('LinkedFromURLs are .pptx', url_metadata['powerpoint_links'])
     print('LinkedFromURLs are .pdf', url_metadata['pdf_links'])
     print('Connection errors processed:', url_metadata['connection_errors'])
