@@ -1,6 +1,7 @@
 # import libraries required for script
 # csv used to read/write csv files
 # requests issues get request to return html contents
+# time used to get time of get request
 # beautiful soup makes html contents human friendly readable, for testing
 import csv
 import requests
@@ -33,7 +34,7 @@ def create_csv_file():
     parse_csv_file(file_name)
 
 # open url_check.csv and parse data into absolute_url and linked_from_url
-# absolute_url contains list of AbsoluteURL from url_check.csv
+# broken_links_url contains list of brokenLinks from url_check.csv
 # linked_from_url contains list of LinkedFromURL from url_check.csv
 # pass this data into check_url
 def parse_csv_file(file_name):
@@ -51,6 +52,8 @@ def parse_csv_file(file_name):
     #call get_url_html and pass url lists as parameters
     #get_url_html issues get requests for linked_from_url
     get_url_html(file_name, broken_links_url,linked_from_url)
+
+#TODO get_url_html should be seperated into functions, too many different objectives
 
 # issue get requests on linked_from_url links
 # pass html content into
@@ -73,11 +76,16 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
         'inactive': 0,
         'unavailable': 0,
         'page_moved': 0,
+        'redirect': 0,
         'response_code_changes': 0,
         'pdf_links': 0,
         'unknown_errors': 0
     }
-    false_negatives = ['Sorry, the page is inactive or protected.', 'This page is currently unavailable.', 'This page has moved.']
+    false_negatives = [
+        'Sorry, the page is inactive or protected.',
+        'This page is currently unavailable.',
+        'This page has moved.',
+        'This presentation contains content that your browser may not be able to show properly.']
 
     # set a user_agent to include for get request
     headers = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.90 Safari/537.36'}
@@ -131,6 +139,11 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
                         url_metadata['page_moved'] += 1
                         url_metadata['response_code_changes'] +=1
                         url_message.append('LinkedFromURL reports page moved.')
+                    elif (false_negatives[3].lower() in response.text.lower()):
+                        url_response_code[-1] = 'c300'
+                        url_metadata['page_moved'] += 1
+                        url_metadata['redirect'] +=1
+                        url_message.append('LinkedFromURL might be a redirect landing page.')
                 elif (url_status[-1] is 'yes'):
                     if('DomainID = ' in response.text):
                         print('DomainID was found')
@@ -224,70 +237,98 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
 # url_contents[2] contains linked_from_url
 # if broken_link exists then flag as yes linked found
 # if broken_link does not exist then do detailed checked:
-#   1. check if broken_link text exists anywhere on page, if yes flag no
+#   1. check if broken_link text exists anywhere on page, flag result
 #   2. check if broken_link contains & symbol. if yes replace with html friendly amp; and recheck
+#   3. check if multiple level relative path  exists in linked_from_url html, if yes build relative path and compare
+#   4. check if same level relative path exists in linked_from_url html, if yes build relative path and compare
+#   else all checks failed return no
 def check_url_html(url_contents):
+    #check if broken_link text exists anywhere on page
     if(url_contents[1].lower() in url_contents[0].lower()):
-        print('FIRST CHECK')
         return 'yes'
+    #check if broken_link contains & symbol. if yes replace with html friendly amp; and recheck
     elif('&' in url_contents[1].lower()):
         if(url_contents[1].replace('&', '&amp;').lower() in url_contents[0].lower()):
             return 'yes'
-
+    #check if multiple level relative path  exists in linked_from_url html, if yes build relative path and compare
     elif('../' in url_contents[0].lower() or '..\\' in url_contents[0].lower()):
-        print('DOUBLECHECK')
-        # split linked_from_url by '/' delimeter
-        # loop through list of href that are relative path for each href
-        # noramlize the urls
-        # store results in broken_relative_url list
-        broken_relative_url = []
-        soup = BeautifulSoup(url_contents[0], 'html.parser').findAll('a')
-        for link in soup:
-            if link.get('href'):
-                if('../' in link.get('href') or '..\\' in link.get('href')):
-                    normalized_url = link.get('href').replace('\\','/')
-                    broken_relative_url.append(normalized_url)
-
-        # build absolute url of broken_links_url
-        # get levels of url by examining number of '../'
-        # remove relative reference in url
-        # use directory_level determined to go up directory of LinkedFromURL
-        absolute_urls = []
-        for url in broken_relative_url:
-            linked_from_url = url_contents[2].lower().split('/')
-            directory_level = url.count('../') +1
-            url = url.split('/')
-            url = [i for i in url if i != '..']
-            linked_from_url = linked_from_url[0:len(linked_from_url)-directory_level]
-            linked_from_url = [i for i in linked_from_url if i]
-            linked_from_url[0] += '/'
-            absolute_urls.append('/'.join(linked_from_url+url).lower())
-
-        if(url_contents[1].lower() in absolute_urls):
-            return 'yes'
-
+        print('SECOND CHECK')
+        return fix_relative_different_path_urls(url_contents[0], url_contents[1], url_contents[2])
+    #check if same level relative path exists in linked_from_url html, if yes build relative path and compare
     elif('/' not in BeautifulSoup(url_contents[0], 'html.parser').findAll('a')):
         print('THIRD CHECK')
-        broken_relative_url = []
-        soup = BeautifulSoup(url_contents[0], 'html.parser').findAll('a')
-
-        for link in soup:
-            if link.get('href'):
-                if '/' not in link.get('href'):
-                    broken_relative_url.append(link.get('href'))
-
-        absolute_urls = []
-
-        domain_url = url_contents[2].split('/')[0:-1]
-
-        for url in broken_relative_url:
-            built_absolute_url = ('/'.join(domain_url)+'/'+url)
-            absolute_urls.append(built_absolute_url.lower())
-
-        if url_contents[1].lower() in absolute_urls:
-            return 'yes'
+        return fix_relative_same_path_urls(url_contents[0], url_contents[1], url_contents[2])
     return 'no'
 
+# TODO fix_relative_same_path_urls and fix_relative_different_path_urls can
+#      probably be combined into one function to simplify.
+
+# check the linked from html for multiple level relative path
+# get list of all links that have multiple level relative paths and build its absolute url
+# compare broken link to list of built absolute urls
+# url_html contains the html contents of the LinkedFromURL
+# broken_url contains the brokenLink to be compared in html contents
+# linked_url contais url of corresponding html contents, used to build absolute url
+def fix_relative_different_path_urls(url_html, broken_url, linked_url):
+    # split linked_from_url by '/' delimeter
+    # loop through list of href that are relative path for each href
+    # noramlize the urls
+    # store results in broken_relative_url list
+    broken_relative_url = []
+    soup = BeautifulSoup(url_html, 'html.parser').findAll('a')
+    for link in soup:
+        if link.get('href'):
+            if('../' in link.get('href') or '..\\' in link.get('href')):
+                normalized_url = link.get('href').replace('\\','/')
+                broken_relative_url.append(normalized_url)
+
+    # build absolute url of broken_links_url
+    # get levels of url by examining number of '../'
+    # remove relative reference in url
+    # use directory_level determined to go up directory of LinkedFromURL
+    absolute_urls = []
+    for url in broken_relative_url:
+        linked_from_url = linked_url.lower().split('/')
+        directory_level = url.count('../') +1
+        url = url.split('/')
+        url = [i for i in url if i != '..']
+        linked_from_url = linked_from_url[0:len(linked_from_url)-directory_level]
+        linked_from_url = [i for i in linked_from_url if i]
+        linked_from_url[0] += '/'
+        absolute_urls.append('/'.join(linked_from_url+url).lower())
+
+    if(broken_url.lower() in absolute_urls):
+        return 'yes'
+    return 'no'
+
+# check the linked from html for multiple level relative path
+# get list of all links that have multiple level relative paths and build its absolute url
+# compare broken link to list of built absolute urls
+# url_html contains the html contents of the LinkedFromURL
+# broken_url contains the brokenLink to be compared in html contents
+# linked_url contais url of corresponding html contents, used to build absolute url
+def fix_relative_same_path_urls(url_html, broken_url, linked_url):
+    broken_relative_url = []
+    soup = BeautifulSoup(url_html, 'html.parser').findAll('a')
+
+    for link in soup:
+        if link.get('href'):
+            if '/' not in link.get('href'):
+                broken_relative_url.append(link.get('href'))
+
+    absolute_urls = []
+    domain_url = linked_url.split('/')[0:-1]
+
+    for url in broken_relative_url:
+        built_absolute_url = ('/'.join(domain_url)+'/'+url)
+        absolute_urls.append(built_absolute_url.lower())
+
+    if broken_url.lower() in absolute_urls:
+        return 'yes'
+    return 'no'
+
+# print to screen a sample report
+# used for testing purposes, all stats here can be recreated with filters from outputted csv file
 def display_results(url_status, url_metadata, total_time_elapsed, url_response_code):
     print('\nResults')
     print('========================================================')
