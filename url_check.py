@@ -2,15 +2,19 @@
 # csv used to read/write csv files
 # requests issues get request to return html contents
 # time used to get time of get request
-# PyPDF2 used to parse pdf links
+# os, sys, subprocess used to open csv file, read sys.arg variables
 # beautiful soup makes html contents human friendly readable, for testing
+# json used to parse javascript
 import csv
 import requests
 import time
+import json
 import os, sys, subprocess
+import re
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
+
 
 # starting point of script
 # calls parse_csv_file to grab urls to be checked
@@ -64,6 +68,7 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
     url_message = []
     url_response_code = []
     url_time_elapsed = []
+    url_domain_id = []
 
     url_metadata = {
         'rows_examined': 0,
@@ -109,6 +114,9 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
             url_response_code.append('n/a')
             url_metadata['empty_links'] +=1
             url_message.append('BrokenLinks/LinkedFromURL is empty')
+            if('-id' in sys.argv):
+                url_domain_id.append('BrokenLinks/LinkedFromURL is empty')
+
         # Mark as PDF and move on to next link
         # TODO time permitting add pdf scraper logic
         elif '.pdf' in linked_url:
@@ -118,6 +126,9 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
             url_metadata['pdf_links'] +=1
             url_metadata['links_processed'] +=1
             url_message.append('LinkedFromURL is a pdf, inspect manually')
+            if('-id' in sys.argv):
+                url_domain_id.append('LinkedFromURL is a pdf, inspect manually')
+
         # Mark as PowerPoint and move on to next link
         # TODO time permitting add .pptx scraper logic
         elif '.pptx' in linked_url:
@@ -127,6 +138,10 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
             url_metadata['powerpoint_links'] +=1
             url_metadata['links_processed'] +=1
             url_message.append('LinkedFromURL is a PowerPoint, inspect manually')
+            if('-id' in sys.argv):
+                url_domain_id.append('LinkedFromURL is a PowerPoint, inspect manually')
+
+        #Mark as a docx and move on to next link
         elif '.docx' in linked_url:
             print('LinkedFromURL is a Word Document, skipping for now')
             url_status.append('No')
@@ -134,6 +149,9 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
             url_metadata['docx_links'] +=1
             url_metadata['links_processed'] +=1
             url_message.append('LinkedFromURL is a Word Document, inspect manually')
+            if('-id' in sys.argv):
+                url_domain_id.append('LinkedFromURL is a Word Document, inspect manually')
+
         # else attempt to issue get request
         else:
             try:
@@ -174,16 +192,18 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
                         url_message.append('LinkedFromURL might be a redirect landing page.')
                     else:
                         url_message.append('LinkedFromURL successfully processed but Broken Link not found')
-                elif('-id' in sys.argv and url_status[-1] is 'yes'):
-                    print('Checking DomainID')
-                elif(url_status[-1] is 'yes'):
+                if(url_status[-1] is 'yes'):
                     url_message.append('LinkedFromURL successfully processed and Broken Link found')
+
+                #try getting domainID if flag is set at runtime
+                if('-id' in sys.argv):
+                    print('Checking DomainID')
+                    url_domain_id.append(get_domain_id(response.text))
 
                 print('Found:', url_status[-1], 'Status code:',url_response_code[-1], 'BrokenLinks:', broken_url, 'LinkedFromURL:', response.url)
                 # increment url_metadata['links_processed']
                 # add LinkedFromURL successfully processed message
                 url_metadata['links_processed'] +=1
-
 
             #throws connectionError exception when get LinkedFromURL fails
             # increment metadata error counter
@@ -230,12 +250,12 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
             # increment metadata error counter
             # update url_status
             # add error message
-            except Exception as e:
-                print("Found:", url_status[-1],'Caught unknown error.', e, 'LinkedFromURL:',linked_url)
-                url_status.append('No')
-                url_response_code.append('n/a')
-                url_metadata['unknown_errors'] +=1
-                url_message.append('Unkown error occured, check LinkedFromURL.')
+            # except Exception as e:
+            #     print("Found:", url_status[-1],'Caught unknown error.', e, 'LinkedFromURL:',linked_url)
+            #     url_status.append('No')
+            #     url_response_code.append('n/a')
+            #     url_metadata['unknown_errors'] +=1
+            #     url_message.append('Unkown error occured, check LinkedFromURL.')
 
         # end time get request completion
         # append time elapsed to url_time_elapsed
@@ -256,7 +276,29 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
     # url_response_code contains list of http response codes
     # url_message contains list of messages about processing of LinkedFromURL
     # url_time_elapsed contains list of time to completion for get request of LinkedFromURL
-    write_reports(file_name, broken_links_url, linked_from_url, url_status, url_response_code, url_message, url_time_elapsed)
+    write_reports(file_name, broken_links_url, linked_from_url, url_status, url_response_code, url_message, url_time_elapsed, url_domain_id)
+
+# check the html content of the LinkedFromURL for the DomainID
+# if exists then build absolute url of DomainID
+# else returns not found
+# linked_from_url_contents
+# TODO: GET RID OF HACKY LOGIC, IMPLEMENT A JS SCRAPER
+def get_domain_id(linked_from_url_contents):
+    #split the contents of html into a list
+    l = linked_from_url_contents.split(' ')
+    # remove empty strings in list
+    l = list(filter(None, l))
+    # if keyword var exists in list
+    if('var' in l):
+        # try looking for DomainID keyword and grab contents at index+2
+        # Should contain the DomainID #, in a perfect world
+        try:
+            domainID = l[l.index('DomainID')+2]
+            domain = 'https://achieve.lausd.net/site/Default.aspx?DomainID='+''.join(i for i in domainID if i.isdigit())
+            return domain
+        # catch and ignore any errors.
+        except:
+            return "DomainID Couldn't be Retrieved."
 
 # compare html content of the processes linked_from_url to the absolute_url
 # url_contents[0] contains html contents
@@ -393,15 +435,19 @@ def display_results(url_status, url_metadata, total_time_elapsed, url_response_c
 # url_response_code contains list of http response codes
 # url_message contains list of messages about processing of LinkedFromURL
 # url_time_elapsed contains list of time to completion for get request of LinkedFromURL
-def write_reports(file_name, broken_links_url, linked_urls, url_status, url_response_code, url_message, url_time_elapsed,):
+def write_reports(file_name, broken_links_url, linked_urls, url_status, url_response_code, url_message, url_time_elapsed, url_domain_id):
     print('generating reports:'+file_name+'_report.csv')
     # format time elapsed to 2 decimal points
     time_elapsed = ["%.2f" % time for time in url_time_elapsed]
-    rows = zip(broken_links_url, linked_urls, url_status, url_response_code, url_message, time_elapsed)
+    if('-id' in sys.argv):
+        rows = zip(broken_links_url, linked_urls, url_status, url_response_code, url_message, time_elapsed, url_domain_id)
+    else:
+        rows = zip(broken_links_url, linked_urls, url_status, url_response_code, url_message, time_elapsed)
+
     # open path to csv file
     with open(file_name+'_report.csv', "w") as f:
         writer = csv.writer(f)
-        header = ['BrokenLinks', 'LinkedFromURL', 'BrokenLinks Found?', 'Response Code', 'Details', 'Time Elapsed(sec)']
+        header = ['BrokenLinks', 'LinkedFromURL', 'BrokenLinks Found?', 'Response Code', 'Details', 'Time Elapsed(sec)', 'DomainID']
         writer.writerow(header)
         for row in rows:
             writer.writerow(row)
