@@ -4,17 +4,13 @@
 # time used to get time of get request
 # os, sys, subprocess used to open csv file, read sys.arg variables
 # beautiful soup makes html contents human friendly readable, for testing
-# json used to parse javascript
 import csv
 import requests
 import time
-import json
 import os, sys, subprocess
-import re
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
-
 
 # starting point of script
 # calls parse_csv_file to grab urls to be checked
@@ -197,12 +193,14 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
 
                 #try getting domainID if flag is set at runtime
                 if('-id' in sys.argv):
-                    print('Checking DomainID')
-                    url_domain_id.append(get_domain_id(response.text))
+                    if get_domain_id(response.text):
+                        url_domain_id.append(get_domain_id(response.text))
+                    else:
+                        url_domain_id.append("DomainID not found.")
 
+                # print stats to console
                 print('Found:', url_status[-1], 'Status code:',url_response_code[-1], 'BrokenLinks:', broken_url, 'LinkedFromURL:', response.url)
                 # increment url_metadata['links_processed']
-                # add LinkedFromURL successfully processed message
                 url_metadata['links_processed'] +=1
 
             #throws connectionError exception when get LinkedFromURL fails
@@ -210,8 +208,8 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
             # update url_status
             # add error message
             except requests.exceptions.ConnectionError:
-                print("Found:", url_status[-1],'Connection error. Check LinkedFromURL on web browser. LinkedFromURL:',linked_url)
                 url_status.append('No')
+                print("Found:", url_status[-1],'Connection error. Check LinkedFromURL on web browser. LinkedFromURL:',linked_url)
                 url_response_code.append('n/a')
                 url_metadata['connection_errors'] +=1
                 url_message.append('Connection error. Check LinkedFromURL on web browser.')
@@ -220,8 +218,8 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
             # update url_status
             # add error message
             except requests.exceptions.InvalidSchema:
-                print("Found:", url_status[-1],'Invalid schema error. Check LinkedFromURL protocol/format. LinkedFromURL:',linked_url)
                 url_status.append('No')
+                print("Found:", url_status[-1],'Invalid schema error. Check LinkedFromURL protocol/format. LinkedFromURL:',linked_url)
                 url_response_code.append('n/a')
                 url_metadata['invalid_schema_errors'] +=1
                 url_message.append('Invalid schema error. Check LinkedFromURL protocol/format.')
@@ -230,8 +228,8 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
             # update url_status
             # add error message
             except requests.exceptions.MissingSchema:
-                print("Found:", url_status[-1],'Missing schema error. Check LinkedFromURL format, might be empty. LinkedFromURL:',linked_url)
                 url_status.append('No')
+                print("Found:", url_status[-1],'Missing schema error. Check LinkedFromURL format, might be empty. LinkedFromURL:',linked_url)
                 url_response_code.append('n/a')
                 url_metadata['missing_schema_errors'] +=1
                 url_message.append('Missing schema error. Check LinkedFromURL format, might be empty.')
@@ -240,8 +238,8 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
             # update url_status
             # add error message
             except requests.exceptions.RequestException:
-                print("Found:", url_status[-1],'Read Timeout error. The connection timed out after waiting 10 seconds LinkedFromURL:',linked_url)
                 url_status.append('No')
+                print("Found:", url_status[-1],'Read Timeout error. The connection timed out after waiting 10 seconds LinkedFromURL:',linked_url)
                 url_response_code.append('n/a')
                 url_metadata['time_out_errors'] +=1
                 url_message.append('Read Timeout error. The connection timed out after waiting 10 seconds.')
@@ -250,12 +248,12 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
             # increment metadata error counter
             # update url_status
             # add error message
-            # except Exception as e:
-            #     print("Found:", url_status[-1],'Caught unknown error.', e, 'LinkedFromURL:',linked_url)
-            #     url_status.append('No')
-            #     url_response_code.append('n/a')
-            #     url_metadata['unknown_errors'] +=1
-            #     url_message.append('Unkown error occured, check LinkedFromURL.')
+            except Exception as e:
+                url_status.append('No')
+                print("Found:", url_status[-1],'Caught unknown error.', e, 'LinkedFromURL:',linked_url)
+                url_response_code.append('n/a')
+                url_metadata['unknown_errors'] +=1
+                url_message.append('Unkown error occured, check LinkedFromURL.')
 
         # end time get request completion
         # append time elapsed to url_time_elapsed
@@ -298,7 +296,7 @@ def get_domain_id(linked_from_url_contents):
             return domain
         # catch and ignore any errors.
         except:
-            return "DomainID Couldn't be Retrieved."
+            return "Error Occured while attempting to retrieve DomainID."
 
 # compare html content of the processes linked_from_url to the absolute_url
 # url_contents[0] contains html contents
@@ -439,6 +437,7 @@ def write_reports(file_name, broken_links_url, linked_urls, url_status, url_resp
     print('generating reports:'+file_name+'_report.csv')
     # format time elapsed to 2 decimal points
     time_elapsed = ["%.2f" % time for time in url_time_elapsed]
+    #if flag is set at runtime include domainID data in report.
     if('-id' in sys.argv):
         rows = zip(broken_links_url, linked_urls, url_status, url_response_code, url_message, time_elapsed, url_domain_id)
     else:
