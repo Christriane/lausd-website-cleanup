@@ -7,6 +7,7 @@
 import csv
 import requests
 import time
+import urllib
 import os, sys, subprocess
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
@@ -213,6 +214,8 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
                 url_response_code.append('n/a')
                 url_metadata['connection_errors'] +=1
                 url_message.append('Connection error. Check LinkedFromURL on web browser.')
+                if('-id' in sys.argv):
+                    url_domain_id.append('Connection error. Check LinkedFromURL on web browser')
             #throws invalidSchema exception when LinkedFromURL protocol is invalid
             # increment metadata error counter
             # update url_status
@@ -223,6 +226,8 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
                 url_response_code.append('n/a')
                 url_metadata['invalid_schema_errors'] +=1
                 url_message.append('Invalid schema error. Check LinkedFromURL protocol/format.')
+                if('-id' in sys.argv):
+                    url_domain_id.append('Invalid schema error. Check LinkedFromURL protocol/format.')
             #throws missingSchema exception when LinkedFromURL schema is invalidSchema
             # increment metadata error counter
             # update url_status
@@ -233,6 +238,8 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
                 url_response_code.append('n/a')
                 url_metadata['missing_schema_errors'] +=1
                 url_message.append('Missing schema error. Check LinkedFromURL format, might be empty.')
+                if('-id' in sys.argv):
+                    url_domain_id.append('Missing schema error. Check LinkedFromURL format, might be empty.')
             #throws retryError exception when a get takes longer than specified timeout field.
             # increment metadata error counter
             # update url_status
@@ -243,6 +250,8 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
                 url_response_code.append('n/a')
                 url_metadata['time_out_errors'] +=1
                 url_message.append('Read Timeout error. The connection timed out after waiting 10 seconds.')
+                if('-id' in sys.argv):
+                    url_domain_id.append('Read Timeout error. The connection timed out after waiting 10 seconds.')
 
             # throws catch all exception for all other errors
             # increment metadata error counter
@@ -254,6 +263,8 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
                 url_response_code.append('n/a')
                 url_metadata['unknown_errors'] +=1
                 url_message.append('Unkown error occured, check LinkedFromURL.')
+                if('-id' in sys.argv):
+                    url_domain_id.append('Unkown error occured, check LinkedFromURL.')
 
         # end time get request completion
         # append time elapsed to url_time_elapsed
@@ -308,6 +319,7 @@ def get_domain_id(linked_from_url_contents):
 #   2. check if broken_link contains & symbol. if yes replace with html friendly amp; and recheck
 #   3. check if multiple level relative path  exists in linked_from_url html, if yes build relative path and compare
 #   4. check if same level relative path exists in linked_from_url html, if yes build relative path and compare
+#   5. check if %20 exists in html. Replace with empty space.
 #   else all checks failed return no
 def check_url_html(url_contents):
     #check if broken_link text exists anywhere on page
@@ -317,6 +329,9 @@ def check_url_html(url_contents):
     elif('&' in url_contents[1].lower()):
         if(url_contents[1].replace('&', '&amp;').lower() in url_contents[0].lower()):
             return ('yes')
+    #check if broken_link contains %20 symbol.        
+    elif('%20' in url_contents[1].lower()):
+        return fix_spaces_in_url(url_contents[0],url_contents[1],url_contents[2])
     #check if multiple level relative path  exists in linked_from_url html, if yes build relative path and compare
     elif('../' in url_contents[0].lower() or '..\\' in url_contents[0].lower()):
         return fix_relative_different_path_urls(url_contents[0], url_contents[1], url_contents[2])
@@ -392,6 +407,26 @@ def fix_relative_same_path_urls(url_html, broken_url, linked_url):
     if broken_url.lower() in absolute_urls:
         return 'yes'
 
+    return 'no'
+
+# get list of links and replace existing empty spaces with %20
+# compare list of links to broken link and return yes if found
+# url_html contains the html contents of the LinkedFromURL
+# broken_url contains the brokenLink to be compared in html contents
+# linked_url contais url of corresponding html contents, used to build absolute url
+def fix_spaces_in_url(url_html, broken_url, linked_url):
+    broken_spaced_url = []
+    fixed_spaced_url = []
+    soup = BeautifulSoup(url_html, 'html.parser').findAll('a')
+
+    for link in soup:
+        if link.get('href'):
+            if ' ' in link.get('href'):
+                broken_spaced_url.append(link.get('href'))
+
+    for url in broken_spaced_url:
+        if (broken_url.lower() in url.replace(' ', '%20').lower()):
+            return 'yes'
     return 'no'
 
 # print to screen a sample report
