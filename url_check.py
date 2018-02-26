@@ -26,7 +26,7 @@ def create_csv_file():
     # open path to csv file
     with open(file_name+'_checked.csv', "w") as f:
         writer = csv.writer(f)
-        header = ['BrokenLinks', 'LinkedFromURL']
+        header = ['BrokenLinks', 'LinkedFromURL', 'Domain', 'Proposed Owner', 'Owner Home Page' ]
         writer.writerow(header)
 
     input('\t1. Add links to corresponding column in '+file_name+'_checked.csv.\n\t2. Save and Close.\n\tPress any key to open csv.file.')
@@ -43,6 +43,10 @@ def parse_csv_file(file_name):
     # variable declarations
     broken_links_url = []
     linked_from_url = []
+    domain = []
+    page_owner = []
+    page_owner_page = []
+
     #open the url_check.csv file and store contents in csv_file_contents
     with open(file_name+'_checked.csv', newline='',  encoding='utf-8-sig') as csv_file:
         csv_file_contents = csv.DictReader(csv_file)
@@ -51,21 +55,25 @@ def parse_csv_file(file_name):
         for row in csv_file_contents:
             broken_links_url.append(row['BrokenLinks'])
             linked_from_url.append(row['LinkedFromURL'])
+            domain.append(row['Domain'])
+            page_owner.append(row['ProposedOwner'])
+            page_owner_page.append(row['OwnerHomePage'])
     #call get_url_html and pass url lists as parameters
     #get_url_html issues get requests for linked_from_url
-    get_url_html(file_name, broken_links_url,linked_from_url)
+    get_url_html(file_name, broken_links_url,linked_from_url, domain, page_owner, page_owner_page)
 
 #TODO get_url_html should be seperated into functions, too many different objectives
 
 # issue get requests on linked_from_url links
 # pass html content into
-def get_url_html(file_name, broken_links_url, linked_from_url):
+def get_url_html(file_name, broken_links_url, linked_from_url, domain, page_owner, page_owner_page):
     # Variables declarations
     url_status = []
     url_message = []
     url_response_code = []
     url_time_elapsed = []
     url_domain_id = []
+    last_date_modified = []
 
     url_metadata = {
         'rows_examined': 0,
@@ -107,47 +115,56 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
         # add missing link message
         if not broken_url or not linked_url:
             print("BrokenLinks/LinkedFromURL is empty")
-            url_status.append('No')
+            url_status.append('no')
             url_response_code.append('n/a')
             url_metadata['empty_links'] +=1
             url_message.append('BrokenLinks/LinkedFromURL is empty')
             if('-id' in sys.argv):
                 url_domain_id.append('BrokenLinks/LinkedFromURL is empty')
+            if '-d' in sys.argv:
+                last_date_modified.append("BrokenLinks/LinkedFromURL is empty")
+
 
         # Mark as PDF and move on to next link
         # TODO time permitting add pdf scraper logic
         elif '.pdf' in linked_url:
             print('LinkedFromURL is a PDF, skipping for now')
-            url_status.append('No')
+            url_status.append('no')
             url_response_code.append('n/a')
             url_metadata['pdf_links'] +=1
             url_metadata['links_processed'] +=1
             url_message.append('LinkedFromURL is a pdf, inspect manually')
             if('-id' in sys.argv):
                 url_domain_id.append('LinkedFromURL is a pdf, inspect manually')
+            if '-d' in sys.argv:
+                last_date_modified.append('LinkedFromURL is a pdf, inspect manually')
 
         # Mark as PowerPoint and move on to next link
         # TODO time permitting add .pptx scraper logic
         elif '.pptx' in linked_url:
             print('LinkedFromURL is a PowerPoint, skipping for now')
-            url_status.append('No')
+            url_status.append('no')
             url_response_code.append('n/a')
             url_metadata['powerpoint_links'] +=1
             url_metadata['links_processed'] +=1
             url_message.append('LinkedFromURL is a PowerPoint, inspect manually')
             if('-id' in sys.argv):
                 url_domain_id.append('LinkedFromURL is a PowerPoint, inspect manually')
+            if '-d' in sys.argv:
+                last_date_modified.append('LinkedFromURL is a PowerPoint, inspect manually')
 
         #Mark as a docx and move on to next link
         elif '.docx' in linked_url:
             print('LinkedFromURL is a Word Document, skipping for now')
-            url_status.append('No')
+            url_status.append('no')
             url_response_code.append('n/a')
             url_metadata['docx_links'] +=1
             url_metadata['links_processed'] +=1
             url_message.append('LinkedFromURL is a Word Document, inspect manually')
             if('-id' in sys.argv):
                 url_domain_id.append('LinkedFromURL is a Word Document, inspect manually')
+            if '-d' in sys.argv:
+                last_date_modified.append('LinkedFromURL is a Word Document, inspect manually')
 
         # else attempt to issue get request
         else:
@@ -156,6 +173,7 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
                 # if success call check_url_html and append result to
                 # if fails hopefully exception catches it
                 response = requests.get(linked_url, headers=headers, timeout=10)
+
                 # add response.status_code to url_response_code list
                 url_response_code.append(response.status_code)
                 # call check_url_html with arguments:
@@ -199,6 +217,10 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
                     else:
                         url_domain_id.append("DomainID not found.")
 
+                #get last date modified if flag is set at runtime
+                if '-d' in sys.argv:
+                    last_date_modified.append(get_last_date_modified(response))
+
                 # print stats to console
                 print('Found:', url_status[-1], 'Status code:',url_response_code[-1], 'BrokenLinks:', broken_url, 'LinkedFromURL:', response.url)
                 # increment url_metadata['links_processed']
@@ -209,62 +231,77 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
             # update url_status
             # add error message
             except requests.exceptions.ConnectionError:
-                url_status.append('No')
+                url_status.append('no')
                 print("Found:", url_status[-1],'Connection error. Check LinkedFromURL on web browser. LinkedFromURL:',linked_url)
                 url_response_code.append('n/a')
                 url_metadata['connection_errors'] +=1
                 url_message.append('Connection error. Check LinkedFromURL on web browser.')
                 if('-id' in sys.argv):
                     url_domain_id.append('Connection error. Check LinkedFromURL on web browser')
+                if '-d' in sys.argv:
+                    last_date_modified.append('Connection eror. Check LinkedFromURL on web browser')
+
             #throws invalidSchema exception when LinkedFromURL protocol is invalid
             # increment metadata error counter
             # update url_status
             # add error message
             except requests.exceptions.InvalidSchema:
-                url_status.append('No')
+                url_status.append('no')
                 print("Found:", url_status[-1],'Invalid schema error. Check LinkedFromURL protocol/format. LinkedFromURL:',linked_url)
                 url_response_code.append('n/a')
                 url_metadata['invalid_schema_errors'] +=1
                 url_message.append('Invalid schema error. Check LinkedFromURL protocol/format.')
                 if('-id' in sys.argv):
                     url_domain_id.append('Invalid schema error. Check LinkedFromURL protocol/format.')
+                if '-d' in sys.argv:
+                    last_date_modified.append('Invalid schema error. Check LinkedFromURL protocol/format.')
+
+
             #throws missingSchema exception when LinkedFromURL schema is invalidSchema
             # increment metadata error counter
             # update url_status
             # add error message
             except requests.exceptions.MissingSchema:
-                url_status.append('No')
+                url_status.append('no')
                 print("Found:", url_status[-1],'Missing schema error. Check LinkedFromURL format, might be empty. LinkedFromURL:',linked_url)
                 url_response_code.append('n/a')
                 url_metadata['missing_schema_errors'] +=1
                 url_message.append('Missing schema error. Check LinkedFromURL format, might be empty.')
                 if('-id' in sys.argv):
                     url_domain_id.append('Missing schema error. Check LinkedFromURL format, might be empty.')
+                if '-d' in sys.argv:
+                    last_date_modified.append('Missing schema error. Check LinkedFromURL format, might be empty.')
+
             #throws retryError exception when a get takes longer than specified timeout field.
             # increment metadata error counter
             # update url_status
             # add error message
             except requests.exceptions.RequestException:
-                url_status.append('No')
+                url_status.append('no')
                 print("Found:", url_status[-1],'Read Timeout error. The connection timed out after waiting 10 seconds LinkedFromURL:',linked_url)
                 url_response_code.append('n/a')
                 url_metadata['time_out_errors'] +=1
                 url_message.append('Read Timeout error. The connection timed out after waiting 10 seconds.')
                 if('-id' in sys.argv):
                     url_domain_id.append('Read Timeout error. The connection timed out after waiting 10 seconds.')
+                if '-d' in sys.argv:
+                    last_date_modified.append('Read Timeout error. The connection timed out after waiting 10 seconds.')
+
 
             # throws catch all exception for all other errors
             # increment metadata error counter
             # update url_status
             # add error message
             except Exception as e:
-                url_status.append('No')
+                url_status.append('no')
                 print("Found:", url_status[-1],'Caught unknown error.', e, 'LinkedFromURL:',linked_url)
                 url_response_code.append('n/a')
                 url_metadata['unknown_errors'] +=1
                 url_message.append('Unkown error occured, check LinkedFromURL.')
                 if('-id' in sys.argv):
                     url_domain_id.append('Unkown error occured, check LinkedFromURL.')
+                if '-d' in sys.argv:
+                    last_date_modified.append('Unkown error occured, check LinkedFromURL.')
 
         # end time get request completion
         # append time elapsed to url_time_elapsed
@@ -285,7 +322,14 @@ def get_url_html(file_name, broken_links_url, linked_from_url):
     # url_response_code contains list of http response codes
     # url_message contains list of messages about processing of LinkedFromURL
     # url_time_elapsed contains list of time to completion for get request of LinkedFromURL
-    write_reports(file_name, broken_links_url, linked_from_url, url_status, url_response_code, url_message, url_time_elapsed, url_domain_id)
+    write_reports(file_name, broken_links_url, linked_from_url, domain, url_status, url_response_code, url_message, url_time_elapsed, url_domain_id, last_date_modified, page_owner, page_owner_page)
+
+def get_last_date_modified(response):
+        try:
+            if response.headers['Last-Modified']:
+                return response.headers['Last-Modified']
+        except:
+                return "Last Modified not found"
 
 # check the html content of the LinkedFromURL for the DomainID
 # if exists then build absolute url of DomainID
@@ -329,7 +373,7 @@ def check_url_html(url_contents):
     elif('&' in url_contents[1].lower()):
         if(url_contents[1].replace('&', '&amp;').lower() in url_contents[0].lower()):
             return ('yes')
-    #check if broken_link contains %20 symbol.        
+    #check if broken_link contains %20 symbol.
     elif('%20' in url_contents[1].lower()):
         return fix_spaces_in_url(url_contents[0],url_contents[1],url_contents[2])
     #check if multiple level relative path  exists in linked_from_url html, if yes build relative path and compare
@@ -426,6 +470,7 @@ def fix_spaces_in_url(url_html, broken_url, linked_url):
 
     for url in broken_spaced_url:
         if (broken_url.lower() in url.replace(' ', '%20').lower()):
+            print('CHECKEDFORSPACE')
             return 'yes'
     return 'no'
 
@@ -468,20 +513,30 @@ def display_results(url_status, url_metadata, total_time_elapsed, url_response_c
 # url_response_code contains list of http response codes
 # url_message contains list of messages about processing of LinkedFromURL
 # url_time_elapsed contains list of time to completion for get request of LinkedFromURL
-def write_reports(file_name, broken_links_url, linked_urls, url_status, url_response_code, url_message, url_time_elapsed, url_domain_id):
+def write_reports(file_name, broken_links_url, linked_urls, domain, url_status, url_response_code, url_message, url_time_elapsed, url_domain_id, last_date_modified, page_owner,  page_owner_page):
     print('generating reports:'+file_name+'_report.csv')
     # format time elapsed to 2 decimal points
     time_elapsed = ["%.2f" % time for time in url_time_elapsed]
     #if flag is set at runtime include domainID data in report.
-    if('-id' in sys.argv):
-        rows = zip(broken_links_url, linked_urls, url_status, url_response_code, url_message, time_elapsed, url_domain_id)
+
+    #@TODO Refactor to remove duplication
+
+    if('-id' in sys.argv and '-d' in sys.argv):
+        rows = zip(broken_links_url, linked_urls, domain, page_owner, page_owner_page, url_status, url_response_code, url_message, time_elapsed, url_domain_id, last_date_modified)
+        header = ['BrokenLinks', 'LinkedFromURL', "Source",  'Proposed Owner', 'Owner Home Page', 'BrokenLinks Found?', 'Response Code', 'Details', 'Time Elapsed(sec)', 'DomainID', 'last_date_modified']
+    # if('-id' in sys.argv):
+    #     rows = zip(broken_links_url, linked_urls, url_status, url_response_code, url_message, time_elapsed, url_domain_id)
+    #     header = ['BrokenLinks', 'LinkedFromURL', 'BrokenLinks Found?', 'Response Code', 'Details', 'Time Elapsed(sec)', 'DomainID']
+    # if('-d' in sys.argv):
+    #     rows = zip(broken_links_url, linked_urls, url_status, url_response_code, url_message, time_elapsed, last_date_modified)
+    #     header = ['BrokenLinks', 'LinkedFromURL', 'BrokenLinks Found?', 'Response Code', 'Details', 'Time Elapsed(sec)', 'last_date_modified']
     else:
-        rows = zip(broken_links_url, linked_urls, url_status, url_response_code, url_message, time_elapsed)
+        rows = zip(broken_links_url, linked_urls, page_owner, page_owner_page, url_status, url_response_code, url_message, time_elapsed)
+        header = ['BrokenLinks', 'LinkedFromURL', 'Proposed Owner', 'Owner Home Page', 'BrokenLinks Found?', 'Response Code', 'Details', 'Time Elapsed(sec)']
 
     # open path to csv file
     with open(file_name+'_report.csv', "w") as f:
         writer = csv.writer(f)
-        header = ['BrokenLinks', 'LinkedFromURL', 'BrokenLinks Found?', 'Response Code', 'Details', 'Time Elapsed(sec)', 'DomainID']
         writer.writerow(header)
         for row in rows:
             writer.writerow(row)
