@@ -2,7 +2,7 @@
 This script will check for existence of a link in a given webpage from user input.
 
 ## To Run Script
-### Ensure Python >3 is installed 
+### Ensure Python 3+ is installed 
 
 ```
 > git clone https://github.com/Christriane/lausd-website-cleanup.git
