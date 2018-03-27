@@ -6,7 +6,7 @@ This script will check for existence of a link in a given webpage from user inpu
 
 ```
 > git clone https://github.com/Christriane/lausd-website-cleanup.git
-> cd url_check.py
+> cd lausd-website-cleanup
 > python3 url_check.py [parameters]
 ``` 
 
